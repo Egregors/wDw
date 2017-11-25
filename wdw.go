@@ -28,14 +28,19 @@ func main() {
 		}
 
 		baseDir, _ := filepath.Abs("./")
-		for _, link := range links {
+
+		links = removeDuplicates(links)
+		log.Printf("MAIN: Found %s links", len(links))
+		for nm, link := range links {
+			log.Printf("[%d / %d]", nm + 1, len(links))
 			downloadFile(link, filepath.Join(baseDir, dirName)+"/")
 		}
 	}
+	log.Println("Done.")
 }
 
 func downloadFile(url string, dirToSave string) error {
-	log.Printf("Downloading %s -> %s", url, dirToSave)
+	//log.Printf("Downloading %s -> %s", url, dirToSave)
 
 	response, err := http.Get(url)
 	if err != nil {
@@ -73,7 +78,6 @@ func findLinks(url string) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Panic(err)
 		return nil, fmt.Errorf("findLinks: get %s: %s", url, resp.StatusCode)
 	}
 
@@ -101,4 +105,17 @@ func visit(links []string, n *html.Node, domain string) []string {
 		links = visit(links, c, domain)
 	}
 	return links
+}
+
+func removeDuplicates(elements []string) []string {
+	encountered := map[string]bool{}
+	var result []string
+	for v := range elements {
+		if encountered[elements[v]] == true {
+		} else {
+			encountered[elements[v]] = true
+			result = append(result, elements[v])
+		}
+	}
+	return result
 }
