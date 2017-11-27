@@ -36,12 +36,11 @@ func main() {
 			downloadFile(link, filepath.Join(baseDir, dirName)+"/", prefix)
 		}
 	}
+	log.Println("* * *")
 	log.Println("Done.")
 }
 
 func downloadFile(url string, dirToSave, prefix string) error {
-	//log.Printf("Downloading %s -> %s", url, dirToSave)
-
 	response, err := http.Get(url)
 	if err != nil {
 		log.Fatal(err)
@@ -96,8 +95,6 @@ func visit(links []string, n *html.Node, domain string) []string {
 	if n.Type == html.ElementNode && n.Data == "a" {
 		for _, a := range n.Attr {
 			if a.Key == "href" && strings.Contains(a.Val, "webm") {
-				//linkExt := strings.Split(a.Val, ".")
-				//log.Println(linkExt)
 				links = append(links, domain+a.Val)
 			}
 		}
