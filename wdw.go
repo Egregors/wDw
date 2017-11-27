@@ -32,14 +32,14 @@ func main() {
 		links = removeDuplicates(links)
 		log.Printf("MAIN: Found %s links", len(links))
 		for nm, link := range links {
-			log.Printf("[%d / %d]", nm + 1, len(links))
-			downloadFile(link, filepath.Join(baseDir, dirName)+"/")
+			prefix := fmt.Sprintf("[%d / %d]", nm + 1, len(links))
+			downloadFile(link, filepath.Join(baseDir, dirName)+"/", prefix)
 		}
 	}
 	log.Println("Done.")
 }
 
-func downloadFile(url string, dirToSave string) error {
+func downloadFile(url string, dirToSave, prefix string) error {
 	//log.Printf("Downloading %s -> %s", url, dirToSave)
 
 	response, err := http.Get(url)
@@ -50,6 +50,7 @@ func downloadFile(url string, dirToSave string) error {
 
 	size := response.ContentLength
 	bar := pb.New(int(size)).SetUnits(pb.U_BYTES)
+	bar.Prefix(prefix)
 	bar.Start()
 	rd := bar.NewProxyReader(response.Body)
 
