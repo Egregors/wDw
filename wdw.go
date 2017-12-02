@@ -10,6 +10,7 @@ import (
 	"golang.org/x/net/html"
 	"io"
 	"gopkg.in/cheggaaa/pb.v1"
+	"io/ioutil"
 )
 
 func main() {
@@ -27,13 +28,25 @@ func main() {
 			os.Exit(1)
 		}
 
-		baseDir, _ := filepath.Abs("./")
-
 		links = removeDuplicates(links)
-		log.Printf("MAIN: Found %s links", len(links))
+		baseDir, _ := filepath.Abs("./")
+		dirToSave := filepath.Join(baseDir, dirName)
+
+		alreadyDownloaded := make(map[string]bool)
+		files, err := ioutil.ReadDir(dirToSave)
+		for _, f := range files {
+			alreadyDownloaded[f.Name()] = true
+		}
+
+		log.Printf("MAIN: Found %d links", len(links))
 		for nm, link := range links {
-			prefix := fmt.Sprintf("[%d / %d]", nm + 1, len(links))
-			downloadFile(link, filepath.Join(baseDir, dirName)+"/", prefix)
+			prefix := fmt.Sprintf("[%d / %d]", nm+1, len(links))
+			fName := strings.Split(link, "/")
+			if !alreadyDownloaded[fName[len(fName)-1]] {
+				downloadFile(link, dirToSave+"/", prefix)
+			} else {
+				log.Printf("%s already saved, next..", fName[len(fName)-1])
+			}
 		}
 	}
 	log.Println("* * *")
@@ -47,13 +60,12 @@ func downloadFile(url string, dirToSave, prefix string) error {
 	}
 	defer response.Body.Close()
 
+	fName := strings.Split(url, "/")
 	size := response.ContentLength
 	bar := pb.New(int(size)).SetUnits(pb.U_BYTES)
 	bar.Prefix(prefix)
 	bar.Start()
 	rd := bar.NewProxyReader(response.Body)
-
-	fName := strings.Split(url, "/")
 
 	file, err := os.Create(dirToSave + fName[len(fName)-1])
 	if err != nil {
