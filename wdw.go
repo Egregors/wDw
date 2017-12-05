@@ -56,7 +56,8 @@ func main() {
 func downloadFile(url string, dirToSave, prefix string) error {
 	response, err := http.Get(url)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
+		return err
 	}
 	defer response.Body.Close()
 
