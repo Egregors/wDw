@@ -24,8 +24,7 @@ func main() {
 
 		links, err := findLinks(url)
 		if err != nil {
-			log.Fatal(err)
-			os.Exit(1)
+			log.Println(err)
 		}
 
 		links = removeDuplicates(links)
@@ -91,7 +90,7 @@ func findLinks(url string) ([]string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("findLinks: get %s: %s", url, resp.StatusCode)
+		return nil, fmt.Errorf("findLinks: get %s: %d", url, resp.StatusCode)
 	}
 
 	doc, err := html.Parse(resp.Body)
