@@ -1,16 +1,17 @@
 package main
 
 import (
-	"os"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
+	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
-	"net/http"
-	"fmt"
+
 	"golang.org/x/net/html"
-	"io"
 	"gopkg.in/cheggaaa/pb.v1"
-	"io/ioutil"
 )
 
 func main() {
@@ -106,7 +107,7 @@ func findLinks(url string) ([]string, error) {
 func visit(links []string, n *html.Node, domain string) []string {
 	if n.Type == html.ElementNode && n.Data == "a" {
 		for _, a := range n.Attr {
-			if a.Key == "href" && strings.Contains(a.Val, "webm") {
+			if a.Key == "href" && (strings.Contains(a.Val, "webm") || strings.Contains(a.Val, "mp4")) {
 				links = append(links, domain+a.Val)
 			}
 		}
