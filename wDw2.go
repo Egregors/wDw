@@ -9,34 +9,38 @@ import (
 	"io"
 	"bytes"
 	"path/filepath"
+	"sync"
 )
 
-func fileDownloader(links <-chan string, path string) {
+func fileDownloader(links <-chan string, path string, w *sync.WaitGroup) {
+	defer w.Done()
 	b := &bytes.Buffer{}
-	defer fmt.Println(b)
+	defer fmt.Print(b)
 
 	for url := range links {
 		response, err := http.Get(url)
 		if err != nil {
-			fmt.Println(b, err)
+			fmt.Fprint(b, err)
 		}
-		defer response.Body.Close()
 
 		fileName := strings.Split(url, "/")
 		file, err := os.Create(path + fileName[len(fileName)-1])
 		if err != nil {
-			fmt.Println(b, err)
+			fmt.Fprint(b, err)
 		}
-		defer file.Close()
 
 		if _, err := io.Copy(file, response.Body); err != nil {
-			fmt.Println(b, err)
+			fmt.Fprint(b, err)
 		}
-		fmt.Println(b, "done: "+url)
+
+		response.Body.Close()
+		file.Close()
+
+		fmt.Fprintf(b, "done: %s\n", url)
 	}
 }
 
-func findLinks(url string, links chan<- string) error {
+func findLinks(url string, links chan<- string) {
 	resp, _ := http.Get(url)
 	defer resp.Body.Close()
 	doc, _ := html.Parse(resp.Body)
@@ -44,7 +48,6 @@ func findLinks(url string, links chan<- string) error {
 	visit(links, doc, domain[0]+"//"+domain[1]+domain[2])
 
 	defer close(links)
-	return nil
 }
 
 func visit(links chan<- string, n *html.Node, domain string) []string {
@@ -67,6 +70,8 @@ func main() {
 	links := make(chan string)
 	unseenLinks := make(chan string)
 
+	w := &sync.WaitGroup{}
+
 	url := os.Args[1:2][0]
 	fmt.Println("URL: ", url)
 
@@ -76,7 +81,8 @@ func main() {
 	dirToSave := filepath.Join(baseDir, dirName)
 
 	for i := 0; i < queueSize; i++ {
-		go fileDownloader(unseenLinks, dirToSave+"/")
+		w.Add(1)
+		go fileDownloader(unseenLinks, dirToSave+"/", w)
 	}
 
 	go findLinks(url, links)
@@ -89,4 +95,7 @@ func main() {
 		}
 	}
 	close(unseenLinks)
+	defer fmt.Println("DONE")
+
+	w.Wait()
 }
