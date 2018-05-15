@@ -7,36 +7,43 @@ import (
 	"strings"
 	"golang.org/x/net/html"
 	"io"
-	"bytes"
 	"path/filepath"
 	"sync"
 )
 
 func fileDownloader(links <-chan string, path string, w *sync.WaitGroup) {
 	defer w.Done()
-	b := &bytes.Buffer{}
-	defer fmt.Print(b)
+	//b := &bytes.Buffer{}
+	//defer fmt.Print(b)
 
 	for url := range links {
+		fmt.Println(url)
+
 		response, err := http.Get(url)
 		if err != nil {
-			fmt.Fprint(b, err)
+			//fmt.Fprintln(b, err)
+			fmt.Println(err)
+			continue
 		}
 
 		fileName := strings.Split(url, "/")
 		file, err := os.Create(path + fileName[len(fileName)-1])
 		if err != nil {
-			fmt.Fprint(b, err)
+			//fmt.Fprintln(b, err)
+			fmt.Println(err)
+			continue
 		}
 
 		if _, err := io.Copy(file, response.Body); err != nil {
-			fmt.Fprint(b, err)
+			//fmt.Fprintln(b, err)
+			fmt.Println(err)
+			continue
 		}
 
 		response.Body.Close()
 		file.Close()
-
-		fmt.Fprintf(b, "done: %s\n", url)
+		//fmt.Println("End: " + url)
+		//fmt.Fprintf(b, "done: %s\n", url)
 	}
 }
 
@@ -67,35 +74,37 @@ func visit(links chan<- string, n *html.Node, domain string) []string {
 func main() {
 	const queueSize = 10
 
-	links := make(chan string)
-	unseenLinks := make(chan string)
+	for _, url := range os.Args[1:] {
 
-	w := &sync.WaitGroup{}
+		fmt.Println("URL: ", url)
 
-	url := os.Args[1:2][0]
-	fmt.Println("URL: ", url)
+		links := make(chan string)
+		unseenLinks := make(chan string)
+		w := &sync.WaitGroup{}
 
-	dirName := strings.Split(filepath.Base(url), ".")[0]
-	os.MkdirAll(dirName, os.ModePerm)
-	baseDir, _ := filepath.Abs("./")
-	dirToSave := filepath.Join(baseDir, dirName)
+		dirName := strings.Split(filepath.Base(url), ".")[0]
+		os.MkdirAll(dirName, os.ModePerm)
+		baseDir, _ := filepath.Abs("./")
+		dirToSave := filepath.Join(baseDir, dirName)
 
-	for i := 0; i < queueSize; i++ {
-		w.Add(1)
-		go fileDownloader(unseenLinks, dirToSave+"/", w)
-	}
-
-	go findLinks(url, links)
-
-	seen := make(map[string]bool)
-	for link := range links {
-		if !seen[link] {
-			seen[link] = true
-			unseenLinks <- link
+		for i := 0; i < queueSize; i++ {
+			w.Add(1)
+			go fileDownloader(unseenLinks, dirToSave+"/", w)
 		}
-	}
-	close(unseenLinks)
-	defer fmt.Println("DONE")
 
-	w.Wait()
+		go findLinks(url, links)
+
+		seen := make(map[string]bool)
+		for link := range links {
+			if !seen[link] {
+				seen[link] = true
+				unseenLinks <- link
+			}
+		}
+		close(unseenLinks)
+
+		w.Wait()
+	}
+
+	defer fmt.Println("DONE")
 }
