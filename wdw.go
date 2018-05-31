@@ -1,132 +1,104 @@
 package main
 
 import (
-	"fmt"
-	"io"
-	"io/ioutil"
-	"log"
-	"net/http"
 	"os"
-	"path/filepath"
+	"fmt"
+	"net/http"
 	"strings"
-
 	"golang.org/x/net/html"
-	"gopkg.in/cheggaaa/pb.v1"
+	"io"
+	"path/filepath"
+	"sync"
 )
 
-func main() {
-	for _, url := range os.Args[1:] {
-		log.Printf("MAIN: Try for %s", url)
+// Download file
+func fileDownloader(links <-chan string, path string, w *sync.WaitGroup) {
+	defer w.Done()
+	for url := range links {
+		fmt.Println(url)
 
-		dirName := strings.Split(filepath.Base(url), ".")[0]
-		log.Printf("MAIN: Create folder: %s", dirName)
-
-		os.MkdirAll(dirName, os.ModePerm)
-
-		links, err := findLinks(url)
+		response, err := http.Get(url)
 		if err != nil {
-			log.Println(err)
+			fmt.Println(err)
+			continue
 		}
 
-		links = removeDuplicates(links)
-		baseDir, _ := filepath.Abs("./")
-		dirToSave := filepath.Join(baseDir, dirName)
-
-		alreadyDownloaded := make(map[string]bool)
-		files, err := ioutil.ReadDir(dirToSave)
-		for _, f := range files {
-			alreadyDownloaded[f.Name()] = true
+		fileName := strings.Split(url, "/")
+		file, err := os.Create(path + fileName[len(fileName)-1])
+		if err != nil {
+			fmt.Println(err)
+			continue
 		}
 
-		log.Printf("MAIN: Found %d links", len(links))
-		for nm, link := range links {
-			prefix := fmt.Sprintf("[%d / %d]", nm+1, len(links))
-			fName := strings.Split(link, "/")
-			if !alreadyDownloaded[fName[len(fName)-1]] {
-				downloadFile(link, dirToSave+"/", prefix)
-			} else {
-				log.Printf("%s already saved, next..", fName[len(fName)-1])
-			}
+		if _, err := io.Copy(file, response.Body); err != nil {
+			//fmt.Fprintln(b, err)
+			fmt.Println(err)
+			continue
 		}
+
+		response.Body.Close()
+		file.Close()
 	}
-	log.Println("* * *")
-	log.Println("Done.")
 }
 
-func downloadFile(url string, dirToSave, prefix string) error {
-	response, err := http.Get(url)
-	if err != nil {
-		log.Println(err)
-		return err
-	}
-	defer response.Body.Close()
-
-	fName := strings.Split(url, "/")
-	size := response.ContentLength
-	bar := pb.New(int(size)).SetUnits(pb.U_BYTES)
-	bar.Prefix(prefix)
-	bar.Start()
-	rd := bar.NewProxyReader(response.Body)
-
-	file, err := os.Create(dirToSave + fName[len(fName)-1])
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer file.Close()
-
-	if _, err := io.Copy(file, rd); err != nil {
-		log.Fatal(err)
-	}
-
-	bar.Finish()
-	return nil
-}
-
-func findLinks(url string) ([]string, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Panic(err)
-		return nil, err
-	}
+func findLinks(url string, links chan<- string) {
+	resp, _ := http.Get(url)
 	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("findLinks: get %s: %d", url, resp.StatusCode)
-	}
-
-	doc, err := html.Parse(resp.Body)
-
-	if err != nil {
-		return nil, fmt.Errorf("findLinks: parse %s as HTML: %v", url, err)
-	}
-
+	doc, _ := html.Parse(resp.Body)
 	domain := strings.Split(url, "/")
-	return visit(nil, doc, domain[0]+"//"+domain[1]+domain[2]), nil
+	visit(links, doc, domain[0]+"//"+domain[1]+domain[2])
+
+	defer close(links)
 }
 
-func visit(links []string, n *html.Node, domain string) []string {
+func visit(links chan<- string, n *html.Node, domain string) []string {
 	if n.Type == html.ElementNode && n.Data == "a" {
 		for _, a := range n.Attr {
 			if a.Key == "href" && (strings.Contains(a.Val, "webm") || strings.Contains(a.Val, "mp4")) {
-				links = append(links, domain+a.Val)
+				links <- domain + a.Val
 			}
 		}
 	}
 	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		links = visit(links, c, domain)
+		visit(links, c, domain)
 	}
-	return links
+	return nil
 }
 
-func removeDuplicates(elements []string) []string {
-	encountered := map[string]bool{}
-	var result []string
-	for v := range elements {
-		if encountered[elements[v]] == true {
-		} else {
-			encountered[elements[v]] = true
-			result = append(result, elements[v])
+func main() {
+	const queueSize = 10
+
+	for _, url := range os.Args[1:] {
+
+		fmt.Println("URL: ", url)
+
+		links := make(chan string)
+		unseenLinks := make(chan string)
+		w := &sync.WaitGroup{}
+
+		dirName := strings.Split(filepath.Base(url), ".")[0]
+		os.MkdirAll(dirName, os.ModePerm)
+		baseDir, _ := filepath.Abs("./")
+		dirToSave := filepath.Join(baseDir, dirName)
+
+		for i := 0; i < queueSize; i++ {
+			w.Add(1)
+			go fileDownloader(unseenLinks, dirToSave+"/", w)
 		}
+
+		go findLinks(url, links)
+
+		seen := make(map[string]bool)
+		for link := range links {
+			if !seen[link] {
+				seen[link] = true
+				unseenLinks <- link
+			}
+		}
+		close(unseenLinks)
+
+		w.Wait()
 	}
-	return result
+
+	defer fmt.Println("DONE")
 }
